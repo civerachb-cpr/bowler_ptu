@@ -165,7 +165,7 @@ int main(int argc, const char* argv[])
 
   int n;
   uint8_t ch;
-  state_t state;
+  state_t state = INIT;
   uint8_t buffer[PELCO_D_MSG_LENGTH];
   uint8_t checksum;
   for(;;)
