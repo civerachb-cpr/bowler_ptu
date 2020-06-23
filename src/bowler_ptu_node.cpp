@@ -191,12 +191,27 @@ int main(int argc, const char* argv[])
           break;
 
           case BYTE_1_RECV:
+            state = BYTE_2_RECV;
+            break;
+
           case BYTE_2_RECV:
+            state = BYTE_3_RECV;
+            break;
+
           case BYTE_3_RECV:
+            state = BYTE_4_RECV;
+            break;
+
           case BYTE_4_RECV:
+            state = BYTE_5_RECV;
+            break;
+
           case BYTE_5_RECV:
+            state = BYTE_6_RECV;
+            break;
+
           case BYTE_6_RECV:
-            state++;
+            state = BYTE_7_RECV;
             break;
 
           case BYTE_7_RECV:
@@ -206,7 +221,7 @@ int main(int argc, const char* argv[])
               ROS_WARN("Checksums do not match! r: %x e: %x", ch, checksum);
             }
 
-            ROS_INFO("Received data: %x %x %x %x %x %x", buffer[0], buffer[1], buffer[2], buffer[3], buffer[4], buffer[5], buffer[6]);
+            ROS_INFO("Received data: %x %x %x %x %x %x %x", buffer[0], buffer[1], buffer[2], buffer[3], buffer[4], buffer[5], buffer[6]);
 
             state = INIT;
             break;
