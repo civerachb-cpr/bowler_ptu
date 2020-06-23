@@ -160,8 +160,7 @@ int main(int argc, const char* argv[])
     BYTE_3_RECV    = 3,     // received command 1, waiting for command 2
     BYTE_4_RECV    = 4,     // received command 2, waiting for data 1
     BYTE_5_RECV    = 5,     // received data 1, waiting for data 2
-    BYTE_6_RECV    = 6,     // received data 2, waiting for checksum
-    BYTE_7_RECV    = 7      // received checksum; process the packet!
+    BYTE_6_RECV    = 6,     // received data 2, waiting for checksum. Process the packet when we exit this state
   } state_t;
 
   int n;
@@ -211,10 +210,6 @@ int main(int argc, const char* argv[])
             break;
 
           case BYTE_6_RECV:
-            state = BYTE_7_RECV;
-            break;
-
-          case BYTE_7_RECV:
             checksum = pelco_d::calculate_checksum(buffer);
             if(checksum != ch)
             {
