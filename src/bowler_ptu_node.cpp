@@ -12,7 +12,6 @@
 #include <unistd.h>
 
 using namespace std;
-using namespace pelco_d;
 
 int main(int argc, const char* argv[])
 {
@@ -150,5 +149,68 @@ int main(int argc, const char* argv[])
   if (tcsetattr(port, TCSANOW, &tty) != 0)
   {
     ROS_ERROR("Failed to configure serial port: %i (%s)\n", errno, strerror(errno));
+    exit(1);
   }
-}
+
+  // use a state machine to listen to the serial port
+  typedef enum PROGRAM_STATE{
+    INIT           = 0,     // initial state, waiting for header/sync byte
+    BYTE_1_RECV    = 1,     // received sync, waiting for address
+    BYTE_2_RECV    = 2,     // received address, waiting for command 1
+    BYTE_3_RECV    = 3,     // received command 1, waiting for command 2
+    BYTE_4_RECV    = 4,     // received command 2, waiting for data 1
+    BYTE_5_RECV    = 5,     // received data 1, waiting for data 2
+    BYTE_6_RECV    = 6,     // received data 2, waiting for checksum
+    BYTE_7_RECV    = 7      // received checksum; process the packet!
+  } state_t;
+
+  int n;
+  uint8_t ch;
+  state_t state;
+  uint8_t buffer[PELCO_D_MSG_LENGTH];
+  uint8_t checksum;
+  for(;;)
+  {
+    n = read(port, &ch, 1);
+
+    if(n < 0)
+    {
+      ROS_WARN("Error reading data from serial port: %i", n);
+    }
+    else if(n > 0) // we've successfully read data!
+    {
+      buffer[state] = ch;
+
+      switch(state)
+      {
+        case INIT:
+          if (ch == PELCO_D_SYNC)
+          {
+            state = BYTE_1_RECV;
+          }
+          break;
+
+          case BYTE_1_RECV:
+          case BYTE_2_RECV:
+          case BYTE_3_RECV:
+          case BYTE_4_RECV:
+          case BYTE_5_RECV:
+          case BYTE_6_RECV:
+            state++;
+            break;
+
+          case BYTE_7_RECV:
+            checksum = pelco_d::calculate_checksum(buffer);
+            if(checksum != ch)
+            {
+              ROS_WARN("Checksums do not match! r: %x e: %x", ch, checksum);
+            }
+
+            ROS_INFO("Received data: %x %x %x %x %x %x", buffer[0], buffer[1], buffer[2], buffer[3], buffer[4], buffer[5], buffer[6]);
+
+            state = INIT;
+            break;
+      }// switch
+    }// read-data success
+  }// loop
+}// mains

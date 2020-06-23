@@ -50,7 +50,7 @@ namespace pelco_d
   Note: we assume the array is at least PELCO_D_MSG_LENGTH bytes long
   If it's not, this may cause an array overflow!
   */
-  inline uint8_t calculateChecksum(uint8_t message[])
+  inline uint8_t calculate_checksum(uint8_t message[])
   {
     uint8_t sum = 0x00;
     for(int i=0; i<PELCO_D_MSG_LENGTH-1; i++)
