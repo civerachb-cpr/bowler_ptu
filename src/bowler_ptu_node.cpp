@@ -24,13 +24,13 @@ int main(int argc, const char* argv[])
 
   const char* device = argv[1];
   int baud = atoi(argv[2]);
-  ROS_INFO("Opening %s @ %d baud", port, baud);
+  ROS_INFO("Opening %s @ %d baud", device, baud);
 
   struct termios tty;
   memset(&tty, 0, sizeof(tty));
 
   int port = open(device, O_RDWR);
-  if(tgetattr(port, &tty) != 0)
+  if(tcgetattr(port, &tty) != 0)
   {
     ROS_ERROR("Failed to open serial port: %i (%s)", errno, strerror(errno));
     exit(1);
@@ -80,7 +80,7 @@ int main(int argc, const char* argv[])
       cfsetospeed(&tty, B200);
       break;
 
-    case 300
+    case 300:
       cfsetispeed(&tty, B0);
       cfsetospeed(&tty, B0);
       break;
@@ -111,7 +111,7 @@ int main(int argc, const char* argv[])
       break;
 
     case 19200:
-      cfsetispeed(&tty, B18200);
+      cfsetispeed(&tty, B19200);
       cfsetospeed(&tty, B19200);
       break;
 
