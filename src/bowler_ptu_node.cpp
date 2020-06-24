@@ -152,75 +152,46 @@ int main(int argc, const char* argv[])
     exit(1);
   }
 
-  // use a state machine to listen to the serial port
-  typedef enum PROGRAM_STATE{
-    INIT           = 0,     // initial state, waiting for header/sync byte
-    BYTE_1_RECV    = 1,     // received sync, waiting for address
-    BYTE_2_RECV    = 2,     // received address, waiting for command 1
-    BYTE_3_RECV    = 3,     // received command 1, waiting for command 2
-    BYTE_4_RECV    = 4,     // received command 2, waiting for data 1
-    BYTE_5_RECV    = 5,     // received data 1, waiting for data 2
-    BYTE_6_RECV    = 6,     // received data 2, waiting for checksum. Process the packet when we exit this state
-  } state_t;
-
   int n;
-  uint8_t ch;
-  state_t state = INIT;
   uint8_t buffer[PELCO_D_MSG_LENGTH];
   uint8_t checksum;
+  uint8_t test_command[] = {
+    PELCO_D_SYNC,
+    0x00,
+    ((PELCO_D_CMD_QUERY_PAN >> 8) & 0xff),
+    (PELCO_D_CMD_QUERY_PAN & 0xff),
+    0x00,
+    0x00,
+    0x00
+  };
+  test_command[PELCO_D_CSUM_BYTE] = pelco_d::calculate_checksum(test_command);
+
   for(;;)
   {
-    n = read(port, &ch, 1);
+    n = write(port, test_command, PELCO_D_MSG_LENGTH);
 
-    if(n < 0)
+    if(n < PELCO_D_MSG_LENGTH)
     {
-      ROS_WARN("Error reading data from serial port: %i", n);
+      ROS_WARN("Only write %d bytes!", n);
     }
-    else if(n > 0) // we've successfully read data!
+    else
     {
-      buffer[state] = ch;
+      n = read(port, buffer, PELCO_D_MSG_LENGTH);
 
-      switch(state)
+      if(n < PELCO_D_MSG_LENGTH)
       {
-        case INIT:
-          if (ch == PELCO_D_SYNC)
-          {
-            state = BYTE_1_RECV;
-          }
-          break;
+        ROS_WARN("Did not read whole packet! Only %d bytes recv'd", n);
+      }
+      else
+      {
+        uint8_t checksum = pelco_d::calculate_checksum(buffer);
+        if(checksum != buffer[PELCO_D_CSUM_BYTE])
+        {
+          ROS_WARN("Checksum mismatch! e:%x r:%x", checksum ,buffer[PELCO_D_CSUM_BYTE]);
+        }
 
-          case BYTE_1_RECV:
-            state = BYTE_2_RECV;
-            break;
-
-          case BYTE_2_RECV:
-            state = BYTE_3_RECV;
-            break;
-
-          case BYTE_3_RECV:
-            state = BYTE_4_RECV;
-            break;
-
-          case BYTE_4_RECV:
-            state = BYTE_5_RECV;
-            break;
-
-          case BYTE_5_RECV:
-            state = BYTE_6_RECV;
-            break;
-
-          case BYTE_6_RECV:
-            checksum = pelco_d::calculate_checksum(buffer);
-            if(checksum != ch)
-            {
-              ROS_WARN("Checksums do not match! r: %x e: %x", ch, checksum);
-            }
-
-            ROS_INFO("Received data: %x %x %x %x %x %x %x", buffer[0], buffer[1], buffer[2], buffer[3], buffer[4], buffer[5], buffer[6]);
-
-            state = INIT;
-            break;
-      }// switch
-    }// read-data success
+        ROS_INFO("Response: %x %x %x %x %x %x %x", buffer[0], buffer[1], buffer[2], buffer[3], buffer[4], buffer[5], buffer[6]);
+      }
+    }
   }// loop
 }// mains
