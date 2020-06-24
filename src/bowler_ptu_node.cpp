@@ -10,28 +10,60 @@
 #include <errno.h>
 #include <termios.h>
 #include <unistd.h>
+#include <linux/serial.h>
+#include <sys/ioctl.h>
 
 using namespace std;
 
-int main(int argc, const char* argv[])
+// opens the serial device, returns the file descriptor
+// we assume the device is RS485
+int open_serial_port(std::string &device, int baud)
 {
-  if(argc != 3)
+  int fd = open(device.c_str(), O_RDWR);
+  if(fd < 0)
   {
-    ROS_ERROR("Wrong number of arguments! Expected: %s PORT BAUD", argv[0]);
+    ROS_ERROR("Failed to open %s: %i (%s)", device.c_str(), errno, strerror(errno));
     exit(1);
   }
 
-  const char* device = argv[1];
-  int baud = atoi(argv[2]);
-  ROS_INFO("Opening %s @ %d baud", device, baud);
+  struct serial_rs485 rs485conf;
+  memset(&rs485conf, 0, sizeof(rs485conf));
 
+  // Enable RS485 mode
+  rs485conf.flags |= SER_RS485_ENABLED;
+
+  // Set logical level for RTS pin equal to 1 when sending:
+  rs485conf.flags |= SER_RS485_RTS_ON_SEND;
+  // or, set logical level for RTS pin equal to 0 when sending:
+  //rs485conf.flags &= ~(SER_RS485_RTS_ON_SEND);
+
+  // Set logical level for RTS pin equal to 1 after sending:
+  rs485conf.flags |= SER_RS485_RTS_AFTER_SEND;
+  // or, set logical level for RTS pin equal to 0 after sending:
+  //rs485conf.flags &= ~(SER_RS485_RTS_AFTER_SEND);
+
+  // Set rts delay before send, if needed:
+  //rs485conf.delay_rts_before_send = ...;
+
+  // Set rts delay after send, if needed:
+  //rs485conf.delay_rts_after_send = ...;
+
+  // Set this flag if you want to receive data even while sending data
+  //rs485conf.flags |= SER_RS485_RX_DURING_TX;
+
+  if (ioctl (fd, TIOCSRS485, &rs485conf) < 0)
+  {
+    ROS_ERROR("Failed to configure RS485 settings: %i (%s)", errno, strerror(errno));
+    exit(1);
+  }
+
+  // now configure the serial port settings
   struct termios tty;
   memset(&tty, 0, sizeof(tty));
 
-  int port = open(device, O_RDWR);
-  if(tcgetattr(port, &tty) != 0)
+  if(tcgetattr(fd, &tty) != 0)
   {
-    ROS_ERROR("Failed to open serial port: %i (%s)", errno, strerror(errno));
+    ROS_ERROR("Failed to get serial port configuration: %i (%s)", errno, strerror(errno));
     exit(1);
   }
 
@@ -146,11 +178,35 @@ int main(int argc, const char* argv[])
       break;
   }
 
-  if (tcsetattr(port, TCSANOW, &tty) != 0)
+  if (tcsetattr(fd, TCSANOW, &tty) != 0)
   {
     ROS_ERROR("Failed to configure serial port: %i (%s)\n", errno, strerror(errno));
     exit(1);
   }
+
+  return fd;
+}
+
+int main(int argc, char** argv)
+{
+  string device;
+  int baud;
+
+  if(argc < 3)
+  {
+    ROS_ERROR("Usage: %s SERIAL_DEVICE BAUD_RATE", argv[0]);
+    exit(1);
+  }
+
+  device = string(argv[1]);
+  baud = atoi(argv[2]);
+
+
+  ROS_INFO("Opening %s @ %d baud", device.c_str(), baud);
+
+  int port = open_serial_port(device, baud);
+
+
 
   int n;
   uint8_t buffer[PELCO_D_MSG_LENGTH];
@@ -176,6 +232,8 @@ int main(int argc, const char* argv[])
     }
     else
     {
+      ROS_INFO("Wrote %d bytes. Waiting for reply", n);
+
       n = read(port, buffer, PELCO_D_MSG_LENGTH);
 
       if(n < PELCO_D_MSG_LENGTH)
