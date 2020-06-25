@@ -13,7 +13,38 @@
 #include <linux/serial.h>
 #include <sys/ioctl.h>
 
+#include <pthread.h>
+
 using namespace std;
+
+void *read_serial_thread(void *arg)
+{
+  int fd = *(int*)arg;
+
+  uint8_t buffer[PELCO_D_MSG_LENGTH];
+  int n;
+
+  for(;;)
+  {
+    n = read(fd, buffer, PELCO_D_MSG_LENGTH);
+
+    if(n < PELCO_D_MSG_LENGTH)
+    {
+      ROS_WARN("Did not read whole packet! Only %d bytes recv'd", n);
+    }
+    else
+    {
+      uint8_t checksum = pelco_d::calculate_checksum(buffer);
+      if(checksum != buffer[PELCO_D_CSUM_BYTE])
+      {
+        ROS_WARN("Checksum mismatch! e:%x r:%x", checksum ,buffer[PELCO_D_CSUM_BYTE]);
+      }
+
+      ROS_INFO("Response: %x %x %x %x %x %x %x", buffer[0], buffer[1], buffer[2], buffer[3], buffer[4], buffer[5], buffer[6]);
+    }
+  }
+  return NULL;
+}
 
 // opens the serial device, returns the file descriptor
 // we assume the device is RS485
@@ -206,8 +237,6 @@ int main(int argc, char** argv)
 
   int port = open_serial_port(device, baud);
 
-
-
   int n;
   uint8_t buffer[PELCO_D_MSG_LENGTH];
   uint8_t checksum;
@@ -220,36 +249,34 @@ int main(int argc, char** argv)
     0x00,
     0x00
   };
-  test_command[PELCO_D_CSUM_BYTE] = pelco_d::calculate_checksum(test_command);
+
+  int listener_thread_id = -1;
+  pthread_t listener_thread;
 
   for(;;)
   {
-    n = write(port, test_command, PELCO_D_MSG_LENGTH);
-
-    if(n < PELCO_D_MSG_LENGTH)
+    for(int i=0; i<0xff; i++)
     {
-      ROS_WARN("Only write %d bytes!", n);
-    }
-    else
-    {
-      ROS_INFO("Wrote %d bytes. Waiting for reply", n);
+      test_command[PELCO_D_ADDR_BYTE] = (int8_t)i;
+      test_command[PELCO_D_CSUM_BYTE] = pelco_d::calculate_checksum(test_command);
 
-      n = read(port, buffer, PELCO_D_MSG_LENGTH);
+      n = write(port, test_command, PELCO_D_MSG_LENGTH);
 
       if(n < PELCO_D_MSG_LENGTH)
       {
-        ROS_WARN("Did not read whole packet! Only %d bytes recv'd", n);
+        ROS_WARN("Only write %d bytes!", n);
       }
       else
       {
-        uint8_t checksum = pelco_d::calculate_checksum(buffer);
-        if(checksum != buffer[PELCO_D_CSUM_BYTE])
+        ROS_INFO("Wrote %d bytes to address %d. Waiting for reply", n, i);
+
+        if(listener_thread_id < 0)
         {
-          ROS_WARN("Checksum mismatch! e:%x r:%x", checksum ,buffer[PELCO_D_CSUM_BYTE]);
+          listener_thread_id = pthread_create(&listener_thread, NULL, read_serial_thread, &port);
         }
 
-        ROS_INFO("Response: %x %x %x %x %x %x %x", buffer[0], buffer[1], buffer[2], buffer[3], buffer[4], buffer[5], buffer[6]);
+        sleep(1);
       }
-    }
-  }// loop
+    }// address loop
+  }// inf loop
 }// mains
